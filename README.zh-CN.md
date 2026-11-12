@@ -1,217 +1,116 @@
-# Bili-SyncPlay
+# YouTube SyncPlay
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-Bili-SyncPlay 是一个“浏览器扩展（Chrome / Edge / Firefox）+ WebSocket 服务端”的哔哩哔哩同步观影项目。用户可以创建或加入房间，分享当前视频，并在参与者之间同步播放、暂停、跳转和播放速率。
+“浏览器扩展 + WebSocket 服务端”的 YouTube 同步观影工具。创建或加入房间，分享当前视频，房间成员之间同步播放、暂停、跳转和倍速。
 
-它覆盖了完整的本地使用链路：
+设计思路参考了 [Bili-SyncPlay](https://github.com/Sky1wu/Bili-SyncPlay)（哔哩哔哩版），代码为针对 YouTube 重新编写，未复制原项目源码。
 
-- 在 Chrome / Edge / Firefox 121+ 中加载未打包扩展
-- 启动本地同步服务
-- 创建房间并复制邀请串
-- 让多个成员保持同一共享视频的同步播放
+## 目录
 
-本仓库是一个 monorepo：
-
-- `extension/`：浏览器扩展（Chrome / Edge / Firefox）
-- `server/`：WebSocket 房间服务与管理后台
-- `packages/protocol/`：共享协议类型
-
-## 一眼看懂
-
-- 邀请格式：`roomCode:joinToken`
-- 默认本地服务地址：`ws://localhost:8787`
-- 本地开发浏览器：Chrome、Edge、Firefox 121+
-- 生产环境建议地址：`wss://<你的域名>`
+- `extension/`：浏览器扩展（Manifest V3，Chrome / Edge 116+），无需构建，直接加载
+- `server/`：WebSocket 房间服务器（Node.js 18+ 或 Bun）
+- `extension-test/`：页面同步逻辑测试
 
 ## 快速开始
 
-如果你想直接使用已发布版本，可以直接从以下已上架商店安装：
+### 1. 启动服务器
 
-- [Chrome 应用商店中的 Bili-SyncPlay](https://chromewebstore.google.com/detail/bili-syncplay/lbmckljnginagfabglpfdepofoglfdkj)
-- [Microsoft Edge 扩展商店中的 Bili-SyncPlay](https://microsoftedge.microsoft.com/addons/detail/bili-syncplay/cpgcalajpoihfgfeidmnijcdimnjniam)
-
-### 1. 安装并构建
+用 Node.js：
 
 ```bash
+cd server
 npm install
-npm run build
+npm start
 ```
+
+或用 Bun：
+
+```bash
+cd server
+bun install
+bun src/server.js
+```
+
+默认监听 `ws://localhost:8787`。
 
 ### 2. 加载扩展
 
-**Chrome / Edge**（`npm run build` 产出 `extension/dist`）：
+1. 打开 `chrome://extensions`（Edge 为 `edge://extensions`）
+2. 开启“开发者模式”
+3. 点击“加载已解压的扩展程序”，选择 `extension` 目录
+4. 已经打开的 YouTube 标签页需要刷新一次
 
-1. 打开 `chrome://extensions`
-2. 开启开发者模式
-3. 点击 `加载已解压的扩展程序`
-4. 选择 `extension/dist`
+### 3. 使用
 
-**Firefox 121+**（先构建 Firefox 目标）：
+1. 点击扩展图标，填写昵称，点“创建房间”
+2. 复制邀请串（`房间号:令牌`）发给朋友，对方粘贴后点“加入房间”
+3. 打开一个 YouTube 视频，在弹窗中点“同步当前页视频”
+4. 其他成员会自动打开同一视频并进入同步
 
-```bash
-npm run build:extension:firefox   # 产出 extension/dist-firefox
-```
-
-1. 打开 `about:debugging#/runtime/this-firefox`
-2. 点击 `临时载入附加组件…`
-3. 选择 `extension/dist-firefox/manifest.json`
-
-Firefox 构建产出 event page 形态后台（`background.scripts`，因 Firefox 不支持 MV3 `background.service_worker`），并覆盖扩展 CSP，使明文 `ws://` 服务端不会被强制升级为 `wss://`。临时附加组件在 Firefox 关闭后移除，每次重启需重新载入。
-
-### 3. 启动本地服务器
-
-在未打包扩展连接本地服务器之前，需要先把当前扩展 Origin 加入 `ALLOWED_ORIGINS`。
-
-PowerShell：
-
-```powershell
-$env:ALLOWED_ORIGINS="chrome-extension://<extension-id>"
-npm run dev:server
-```
-
-Bash：
-
-```bash
-ALLOWED_ORIGINS=chrome-extension://<extension-id> \
-npm run dev:server
-```
-
-**Firefox Origin 说明。** Firefox 给每个安装分配随机 `moz-extension://<uuid>`（重装会变、各用户不同），不像 Chrome 固定扩展 ID 那样有一个通用值：
-
-- 自建 / 少数用户：从 `about:debugging`（扩展的 Internal UUID / 清单 URL）或服务端被拒握手日志读到该 UUID，把这个精确的 `moz-extension://<uuid>` 加入 `ALLOWED_ORIGINS`；重装扩展后需更新。
-- 公共 / 共享服务端：设 `ALLOW_ANY_FIREFOX_EXTENSION_ORIGIN=true`，接受任意格式正确的 `moz-extension://<uuid>` 而无需逐一枚举。它仍拒绝网页 Origin，且不替代房间/成员 token 鉴权（见[安全相关环境变量参考](./docs/reference/security-env.zh-CN.md)）。
-
-Firefox 把扩展后台视为安全上下文，非 localhost 服务端必须用 `wss://`；Firefox 构建已覆盖扩展 CSP，使本地开发时 `ws://localhost` 不被强制升级。
-
-### 4. 开始使用
-
-1. 打开扩展弹窗
-2. 创建房间，或者使用 `roomCode:joinToken` 加入已有房间
-3. 打开受支持的 Bilibili 视频页面
-4. 在弹窗中点击 `同步当前页视频`
-5. 其他房间成员会打开同一视频并进入同步模式
-
-如果成员在仍处于房间时浏览到其他未共享视频页面，该页面会保持本地模式，除非他们显式再次同步，否则不会影响房间。
+和朋友异地使用时，需要把服务器部署到双方都能访问的地址，并在弹窗“设置”里把服务器地址改成 `wss://你的域名`（双方都要改）。
 
 ## 功能
 
-- 房间能力
-  - 创建房间并获取邀请串
-  - 使用 `roomCode:joinToken` 加入房间
-  - 直接在弹窗中复制并分享邀请串
-- 同步能力
-  - 在扩展弹窗中分享当前页面视频
-  - 同步播放、暂停、跳转和播放速率
-  - 房间成员自动打开当前共享的视频
-- 页面内反馈
-  - 成员加入和离开提示
-  - 共享视频变更提示
-  - 播放、暂停、跳转、倍速变化提示
-- 房间内的本地浏览隔离
-  - 未共享页面不会把播放状态广播回房间
-  - 在未共享页面上的手动播放仅在本地生效
+- 房间：创建房间、邀请串加入、复制邀请串、成员列表
+- 同步：播放、暂停、跳转、倍速；中途加入的成员从房间当前进度开始
+- 自动打开：共享视频变更时，成员的标签页自动跳转到新视频
+- 页面提示：成员加入/离开、共享视频变更、播放/暂停/跳转/倍速变化
+- 本地浏览隔离：在房间里浏览其他视频只在本地生效，不会影响房间
+- 断线重连：短暂掉线会保留席位，自动恢复
 
-## 支持的页面
+针对 YouTube 的处理：
 
-- `https://www.bilibili.com/video/*`
-- `https://www.bilibili.com/bangumi/play/*`
-- `https://www.bilibili.com/festival/*`
-- 列表播放页，且页面 URL 中带有 `bvid`：稍后再看 `https://www.bilibili.com/list/watchlater*`、收藏夹 `https://www.bilibili.com/list/ml<收藏夹 id>*`、UP 主合集 `https://www.bilibili.com/list/<UP 主 mid>*`，以及它们对应的 `https://www.bilibili.com/medialist/play/*` 形式
+- **单页应用导航**：监听 `yt-navigate-start` / `yt-navigate-finish`，切换视频时重新判断是否为共享视频
+- **广告**：某位成员播放广告期间不广播也不应用状态，广告结束后自动追上房间进度，不会拖慢其他人
+- **自动连播**：分享者的视频自然播完并自动播放下一个时，自动把下一个视频同步给房间（可在设置中关闭）
+- **直播**：只同步播放/暂停，不同步进度和倍速
 
-视频变体识别：
+支持的页面：`youtube.com/watch?v=`、`/shorts/`、`/live/`，以及 `youtu.be` 短链（统一归一化为 `watch?v=<id>`）。
 
-- 多 P 视频通过 `?p=` 识别
-- festival 页面通过 `bvid + cid` 识别
+## 服务器配置（环境变量）
 
-## 项目结构
+| 变量                   | 默认值    | 说明                                                                 |
+| ---------------------- | --------- | -------------------------------------------------------------------- |
+| `PORT`                 | `8787`    | 监听端口                                                             |
+| `HOST`                 | `0.0.0.0` | 监听地址                                                             |
+| `ALLOWED_ORIGINS`      | 空        | 逗号分隔的允许来源，如 `chrome-extension://<扩展ID>`。留空时接受任意浏览器扩展来源、拒绝普通网页来源 |
+| `MAX_MEMBERS_PER_ROOM` | `20`      | 每个房间人数上限                                                     |
 
-```text
-Bili-SyncPlay/
-  extension/            浏览器扩展（Chrome/Edge/Firefox）
-  server/               WebSocket 房间服务器
-  packages/protocol/    共享协议类型
-  scripts/              发布打包脚本
-  docs/                 运维、迁移和政策文档
-  .github/workflows/    GitHub Actions 工作流
-```
+- 健康检查：`GET /healthz`
+- 公网部署建议设置 `ALLOWED_ORIGINS`，并用 Nginx/Caddy 反向代理做 TLS，让扩展通过 `wss://` 连接
+- Docker：`docker build -t youtube-syncplay-server server && docker run -p 8787:8787 youtube-syncplay-server`
+- 房间保存在内存中，服务器重启后房间失效，需要重新创建
 
-## 文档入口
-
-- [文档索引](./docs/README.md)
-- [架构概览](./docs/architecture.zh-CN.md)——系统组成、同步数据流、新代码放哪里
-- [开发指南](./docs/development.zh-CN.md)——本地命令、测试、基准压测、代码组织、故障排查、发布打包
-- [服务器部署指南](./docs/operations/deployment.zh-CN.md)——构建、systemd、Nginx、TLS、更新流程
-- [多节点部署与全局管理面](./docs/operations/multi-node.zh-CN.md)
-- [协议参考](./docs/reference/protocol.zh-CN.md)
-- [安全相关环境变量](./docs/reference/security-env.zh-CN.md)
-- [管理面板与 API](./docs/reference/admin-api.zh-CN.md)
-- [多节点运维 Runbook](./docs/runbook/multi-node-operations.zh-CN.md)
-- [多节点全局管理面迁移说明](./docs/operations/multi-node-global-admin-migration.zh-CN.md)
-- [隐私权政策](./docs/legal/privacy.zh-CN.md)
-
-## 环境要求
-
-### 版本矩阵
-
-| 依赖          | 最低版本                  | 推荐版本    | 说明                                                                                               |
-| ------------- | ------------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
-| Node.js       | 22.22                     | 22 LTS      | 参见 `.nvmrc`；Node 18/20 已 EOL，`npm run coverage` 需 ≥22.5，React Router 8（admin-ui）需 ≥22.22 |
-| npm           | 10                        | 10          | 随对应 Node.js 版本附带                                                                            |
-| Chrome / Edge | 当前稳定版                | 当前稳定版  | 用于加载未打包扩展                                                                                 |
-| Firefox       | 121                       | 当前稳定版  | 可选；使用 Firefox 构建（`dist-firefox`，event page 后台）                                         |
-| Redis         | 6.0                       | 7+          | 单机模式可选；**多节点部署和重启后持久化必须使用**                                                 |
-| 反向代理      | 任意支持 WebSocket 的代理 | Nginx 1.18+ | 生产环境中用于 TLS 终止和 `wss://`                                                                 |
-
-### 非目标
-
-- **无 Redis 时不做多节点一致性保证。** 当 `ROOM_STORE_PROVIDER=memory` 时，每个服务实例各自维护房间状态。连接到不同节点的成员会看到不同的房间。
-- **不内置负载均衡。** 多节点部署依赖外部入口层（Nginx、HAProxy、云 SLB/ALB）分发 WebSocket 连接，服务端本身不实现 L4/L7 负载均衡。
-- **不恢复浏览器会话。** 房间成员状态（`roomCode`、`joinToken`、`memberToken`）存储在 `chrome.storage.session`，浏览器关闭后即清除。用户需在下次打开浏览器后重新加入房间。
-- **不提供终端用户账号系统。** 房间访问仅通过 `roomCode:joinToken` 邀请串控制，没有面向观众的注册或登录机制。
-- **不支持移动端浏览器或 Safari。** 扩展为 Manifest V3：Chrome/Edge（service worker 后台）与 Firefox 121+（event page 后台）；Safari 与移动端浏览器不在范围内。
-
-## 本地默认值
-
-- 默认服务器地址：`ws://localhost:8787`
-- 服务器地址输入为空时，会回退到构建时默认值
-- 仅接受 `ws://` 和 `wss://`
-- 本地未打包扩展开发要求 `ALLOWED_ORIGINS=chrome-extension://<extension-id>`（Chrome/Edge）或当前 `moz-extension://<uuid>` / `ALLOW_ANY_FIREFOX_EXTENSION_ORIGIN=true`（Firefox；见“启动本地服务器”）
-
-如需在本地或生产环境打开管理控制面板，见[管理面板与 API](./docs/reference/admin-api.zh-CN.md)。
-
-## Docker 部署
-
-服务端在每个 `v*` release tag 上同步发布容器镜像：
-
-- `ghcr.io/sky1wu/bili-syncplay-server`（[GHCR package 页面](https://github.com/sky1wu/Bili-SyncPlay/pkgs/container/bili-syncplay-server)）
-- `docker.io/sky1wu/bili-syncplay-server`（[Docker Hub 页面](https://hub.docker.com/r/sky1wu/bili-syncplay-server)，镜像仓库）
-
-以上是 `docker pull` 用的镜像引用，不是网页地址——浏览器访问请用括号里的链接。
-
-镜像 tag 包括 `latest`、`<major>.<minor>` 和完整版本号（如 `1.2.2`），支持 `linux/amd64` 与 `linux/arm64` 双架构。
-
-直接运行：
+## 测试
 
 ```bash
-docker run -d --name bili-syncplay-server \
-  -p 8787:8787 \
-  -e ALLOWED_ORIGINS=chrome-extension://lbmckljnginagfabglpfdepofoglfdkj \
-  ghcr.io/sky1wu/bili-syncplay-server:latest
+cd server
+npm test
 ```
 
-也可以使用仓库内的 [`docker-compose.yml`](./docker-compose.yml)，其中附带可选的 Redis 服务，用于多节点或需要重启后保留状态的部署。
+```bash
+node extension-test/content-sync.test.mjs
+```
 
-说明：
+（没有 Node 时把 `npm test` / `node` 换成 `bun test/smoke.mjs` / `bun`。）
 
-- 容器监听 `8787`（可用 `PORT` 覆盖），提供 `/healthz` 与 `/readyz`，并内置 Docker `HEALTHCHECK`。
-- 配置完全通过环境变量完成，与裸机部署一致：`ALLOWED_ORIGINS`（扩展连接必填）、Redis 持久化（需同时设置 `ROOM_STORE_PROVIDER=redis` 与 `REDIS_URL`，只设 `REDIS_URL` 仍是内存存储）、管理面板变量（`ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` / `ADMIN_SESSION_SECRET`）等——参见[安全相关环境变量参考](./docs/reference/security-env.zh-CN.md)和[多节点运维手册](./docs/runbook/multi-node-operations.zh-CN.md)。
-- 容器直接以 `node` 作为 PID 1 运行并处理 `SIGTERM`：`docker stop` 会触发优雅退出（正常 1s 内完成，忙节点最坏约 135s）。Docker 默认宽限期只有 10s，会中途 SIGKILL，请用 `docker stop -t 160`；`docker-compose.yml` 已设 `stop_grace_period: 160s`。细节见[部署指南的"优雅退出"](./docs/operations/deployment.zh-CN.md#优雅退出)。
-- 生产环境应在前置反向代理终结 TLS，让扩展通过 `wss://` 连接（见版本矩阵）。
-- 从源码构建：在仓库根目录执行 `docker build -t bili-syncplay-server .`（镜像只包含服务端，扩展另行分发）。
+## 与 Bili-SyncPlay 的差异
 
-维护者说明：`Docker Release` workflow 使用内置 `GITHUB_TOKEN` 自动推送 GHCR；如需同步发布 Docker Hub，配置仓库 secrets `DOCKERHUB_USERNAME` 与 `DOCKERHUB_TOKEN`，缺省时会跳过 Docker Hub 推送而不影响发布。
+这是一个精简实现，保留了核心的房间与同步体验，没有包含原项目的：管理后台、Redis 多节点、运营公告、Firefox 构建、诊断面板。协议也做了简化（连接绑定成员身份，`memberToken` 仅用于重连）。
 
-## License
+## 已知限制
 
-本项目基于 GNU General Public License v3.0 授权。详见 [LICENSE](./LICENSE)。
+- 同步逻辑目前由基于模拟播放器的测试覆盖，尚未在真实 YouTube 页面上做端到端验证
+- 会员专享、年龄限制或地区限制的视频，无权观看的成员无法同步
+- 每个人看到的广告不同，看广告的成员会在广告结束后跳到房间当前进度
+- 浏览器可能阻止后台标签页自动播放，此时页面会提示点击一下
+- 小于约 1.5 秒的微小跳转不会广播（用于区分用户操作和同步回声）
+
+## 许可证
+
+[GPL-3.0](./LICENSE)
+
+## 说明
+
+本项目与 YouTube / Google 无关联。

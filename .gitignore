@@ -1,15 +1,4 @@
 node_modules/
-dist/
-dist-firefox/
-build/
-coverage/
+bun.lock
+bun.lockb
 *.log
-tmp-test-extension/
-release/
-.vscode/
-/.claude/*
-!/.claude/skills/
-!/.claude/agents/
-!/.claude/commands/
-.codex/
-.tmp/

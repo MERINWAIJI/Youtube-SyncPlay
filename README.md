@@ -1,217 +1,116 @@
-# Bili-SyncPlay
+# YouTube SyncPlay
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-Bili-SyncPlay is a browser extension (Chrome, Edge, Firefox) plus a WebSocket server for synchronized Bilibili watching. Users can create or join a room, share the current video, and keep playback, pause, seek, and playback rate in sync across participants.
+YouTube SyncPlay is a "browser extension + WebSocket server" project for watching YouTube together. Create or join a room, share the current video, and keep play, pause, seek and playback rate in sync between room members.
 
-It supports the full local workflow:
+The design follows [Bili-SyncPlay](https://github.com/Sky1wu/Bili-SyncPlay) (the Bilibili version). The code was rewritten for YouTube and does not copy the original project's source.
 
-- load the unpacked extension in Chrome, Edge, or Firefox 121+
-- run the local sync server
-- create a room and share an invite string
-- keep everyone on the same shared video in sync
+## Layout
 
-This repository is a monorepo:
-
-- `extension/`: browser extension (Chrome/Edge/Firefox)
-- `server/`: WebSocket room server and admin panel
-- `packages/protocol/`: shared protocol types
-
-## At a Glance
-
-- Invite format: `roomCode:joinToken`
-- Default local server: `ws://localhost:8787`
-- Supported browsers for development: Chrome, Edge, Firefox 121+
-- Recommended production server URL: `wss://<your-domain>`
+- `extension/`: browser extension (Manifest V3, Chrome / Edge 116+), no build step, load it directly
+- `server/`: WebSocket room server (Node.js 18+ or Bun)
+- `extension-test/`: tests for the in-page sync logic
 
 ## Quick Start
 
-If you want to use the published extension directly, install it from one of the published stores:
+### 1. Start the server
 
-- [Bili-SyncPlay on Chrome Web Store](https://chromewebstore.google.com/detail/bili-syncplay/lbmckljnginagfabglpfdepofoglfdkj)
-- [Bili-SyncPlay on Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/bili-syncplay/cpgcalajpoihfgfeidmnijcdimnjniam)
-
-### 1. Install and build
+With Node.js:
 
 ```bash
+cd server
 npm install
-npm run build
+npm start
 ```
+
+Or with Bun:
+
+```bash
+cd server
+bun install
+bun src/server.js
+```
+
+It listens on `ws://localhost:8787` by default.
 
 ### 2. Load the extension
 
-**Chrome / Edge** (`npm run build` produces `extension/dist`):
+1. Open `chrome://extensions` (`edge://extensions` in Edge)
+2. Turn on Developer mode
+3. Click `Load unpacked` and select the `extension` directory
+4. Reload any YouTube tabs that were already open
 
-1. Open `chrome://extensions`
-2. Enable Developer mode
-3. Click `Load unpacked`
-4. Select `extension/dist`
+### 3. Use it
 
-**Firefox 121+** (build the Firefox target first):
+1. Click the extension icon, enter a nickname and click "Create room"
+2. Copy the invite (`roomCode:token`) and send it to a friend, who pastes it and clicks "Join room"
+3. Open a YouTube video and click "Sync this page's video" in the popup
+4. Other members open the same video automatically and start syncing
 
-```bash
-npm run build:extension:firefox   # produces extension/dist-firefox
-```
-
-1. Open `about:debugging#/runtime/this-firefox`
-2. Click `Load Temporary Add-on…`
-3. Select `extension/dist-firefox/manifest.json`
-
-The Firefox build emits an event-page background (`background.scripts`, since Firefox does not support MV3 `background.service_worker`) and overrides the extension CSP so a plain `ws://` server is not auto-upgraded to `wss://`. The temporary add-on is removed when Firefox closes; reload it after each restart.
-
-### 3. Start the local server
-
-Before connecting the unpacked extension to a local server, allow the current extension origin in `ALLOWED_ORIGINS`.
-
-PowerShell:
-
-```powershell
-$env:ALLOWED_ORIGINS="chrome-extension://<extension-id>"
-npm run dev:server
-```
-
-Bash:
-
-```bash
-ALLOWED_ORIGINS=chrome-extension://<extension-id> \
-npm run dev:server
-```
-
-**Firefox origin note.** Firefox assigns each install a random `moz-extension://<uuid>` (it changes on reinstall and differs per user), so there is no single value that works for everyone like a fixed Chrome extension ID:
-
-- Self-hosted / few users: read the UUID from `about:debugging` (the extension's Internal UUID / Manifest URL) or from the server's rejected-handshake log, then add that exact `moz-extension://<uuid>` to `ALLOWED_ORIGINS`. You must update it after reinstalling the add-on.
-- Public / shared server: set `ALLOW_ANY_FIREFOX_EXTENSION_ORIGIN=true` to accept any well-formed `moz-extension://<uuid>` without enumerating UUIDs. It still rejects web-page origins and does not replace room/member-token auth (see the [security environment variable reference](./docs/reference/security-env.md)).
-
-Firefox treats the extension background as a secure context, so non-localhost servers must use `wss://`; the Firefox build already overrides the extension CSP so `ws://localhost` is not force-upgraded during local development.
-
-### 4. Use it
-
-1. Open the popup
-2. Create a room, or join one with `roomCode:joinToken`
-3. Open a supported Bilibili video page
-4. Click `Sync current page video`
-5. Other members will open the same video and enter sync mode
-
-If a member later browses to a different non-shared video while still in the room, that page stays local and does not affect the room unless they explicitly sync it.
+To use it with friends in other locations, deploy the server at an address everyone can reach, then set the server address in the popup's Settings to `wss://your-domain` (every member has to change it).
 
 ## Features
 
-- Room lifecycle
-  - create a room and get an invite string
-  - join a room with `roomCode:joinToken`
-  - copy and share invites directly from the popup
-- Playback sync
-  - share the current page video from the popup
-  - sync play, pause, seek, and playback rate
-  - automatically open the currently shared video for room members
-- In-page feedback
-  - member join and leave toasts
-  - shared video change toasts
-  - play, pause, seek, and rate-change toasts
-- Safe local browsing while still in a room
-  - non-shared pages do not broadcast playback back to the room
-  - manual playback on a non-shared page stays local
+- Rooms: create a room, join by invite, copy the invite, member list
+- Sync: play, pause, seek, playback rate; members who join midway start from the room's current position
+- Auto-open: when the shared video changes, members' tabs navigate to the new video
+- Page notices: member joined/left, shared video changed, play/pause/seek/rate changes
+- Local browsing isolation: browsing other videos while in a room stays local and does not affect the room
+- Reconnect: a short disconnect keeps your seat and recovers automatically
 
-## Supported Pages
+YouTube-specific handling:
 
-- `https://www.bilibili.com/video/*`
-- `https://www.bilibili.com/bangumi/play/*`
-- `https://www.bilibili.com/festival/*`
-- list playback routes when the page URL carries `bvid`: `https://www.bilibili.com/list/watchlater*`, a favourites folder `https://www.bilibili.com/list/ml<mlid>*`, a creator's collection `https://www.bilibili.com/list/<mid>*`, and their `https://www.bilibili.com/medialist/play/*` equivalents
+- **Single-page navigation**: listens for `yt-navigate-start` / `yt-navigate-finish` and re-checks whether the new page is the shared video
+- **Ads**: while a member is watching an ad, nothing is broadcast or applied; when the ad ends the member catches up with the room without slowing anyone else down
+- **Autoplay next**: when the sharer's video ends naturally and YouTube autoplays the next one, the next video is shared with the room (can be turned off in Settings)
+- **Live streams**: only play/pause is synced, not position or rate
 
-Video variants:
+Supported pages: `youtube.com/watch?v=`, `/shorts/`, `/live/`, and `youtu.be` short links (all normalized to `watch?v=<id>`).
 
-- multi-part videos via `?p=`
-- festival pages via `bvid + cid`
+## Server Configuration (environment variables)
 
-## Project Structure
+| Variable               | Default   | Description                                                                                                                                             |
+| ---------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                 | `8787`    | Listen port                                                                                                                                             |
+| `HOST`                 | `0.0.0.0` | Listen address                                                                                                                                          |
+| `ALLOWED_ORIGINS`      | empty     | Comma-separated allowed origins, e.g. `chrome-extension://<extension-id>`. When empty, any browser-extension origin is accepted and web page origins are rejected |
+| `MAX_MEMBERS_PER_ROOM` | `20`      | Maximum members per room                                                                                                                                |
 
-```text
-Bili-SyncPlay/
-  extension/            Browser extension (Chrome/Edge/Firefox)
-  server/               WebSocket room server
-  packages/protocol/    Shared protocol types
-  scripts/              Release packaging scripts
-  docs/                 Operations, migration, and policy docs
-  .github/workflows/    GitHub Actions workflows
-```
+- Health check: `GET /healthz`
+- For a public deployment, set `ALLOWED_ORIGINS` and terminate TLS with an Nginx/Caddy reverse proxy so the extension connects over `wss://`
+- Docker: `docker build -t youtube-syncplay-server server && docker run -p 8787:8787 youtube-syncplay-server`
+- Rooms live in memory; they are lost when the server restarts and must be created again
 
-## Documentation
-
-- [Documentation index](./docs/README.md)
-- [Architecture overview](./docs/architecture.md) — system parts, sync data flow, where new code belongs
-- [Development guide](./docs/development.md) — local commands, tests, benchmarks, code organization, troubleshooting, release packaging
-- [Server deployment guide](./docs/operations/deployment.md) — build, systemd, Nginx, TLS, update flow
-- [Multi-node deployment and global admin](./docs/operations/multi-node.md)
-- [Protocol reference](./docs/reference/protocol.md)
-- [Security environment variables](./docs/reference/security-env.md)
-- [Admin panel and API](./docs/reference/admin-api.md)
-- [Multi-node operations runbook](./docs/runbook/multi-node-operations.md)
-- [Multi-node global admin migration](./docs/operations/multi-node-global-admin-migration.md)
-- [Privacy policy](./docs/legal/privacy.md)
-
-## Requirements
-
-### Version matrix
-
-| Dependency    | Minimum                    | Recommended    | Notes                                                                                                        |
-| ------------- | -------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------ |
-| Node.js       | 22.22                      | 22 LTS         | see `.nvmrc`; Node 18/20 are EOL, `npm run coverage` needs ≥22.5, and React Router 8 (admin-ui) needs ≥22.22 |
-| npm           | 10                         | 10             | ships with the corresponding Node.js version                                                                 |
-| Chrome / Edge | current stable             | current stable | required to load the unpacked extension                                                                      |
-| Firefox       | 121                        | current stable | optional; uses the Firefox build (`dist-firefox`, event-page background)                                     |
-| Redis         | 6.0                        | 7+             | optional for single-node; **required** for multi-node deployments and persistence across restarts            |
-| Reverse proxy | any with WebSocket support | Nginx 1.18+    | required in production for TLS termination and `wss://`                                                      |
-
-### Non-goals
-
-- **No guaranteed multi-node consistency without Redis.** When `ROOM_STORE_PROVIDER=memory`, each server instance keeps its own room state. Members connected to different nodes will see different rooms.
-- **No built-in load balancer.** Multi-node deployments depend on an external edge layer (Nginx, HAProxy, cloud SLB/ALB) for WebSocket connection distribution. The server does not implement L4/L7 balancing.
-- **No browser session restoration after restart.** Room membership (`roomCode`, `joinToken`, `memberToken`) lives in `chrome.storage.session` and is cleared when the browser closes. Users must rejoin after a browser restart.
-- **No multi-user accounts or authentication for end users.** Room access is controlled by `roomCode:joinToken` invite strings only. There is no user registration or login system for viewers.
-- **No mobile browser or Safari support.** The extension is Manifest V3 for Chrome/Edge (service-worker background) and Firefox 121+ (event-page background); Safari and mobile browsers are out of scope.
-
-## Local Defaults
-
-- Default server URL: `ws://localhost:8787`
-- Empty server URL input falls back to the build-time default
-- Only `ws://` and `wss://` are accepted
-- Local unpacked extension development requires `ALLOWED_ORIGINS=chrome-extension://<extension-id>` (Chrome/Edge) or the current `moz-extension://<uuid>` / `ALLOW_ANY_FIREFOX_EXTENSION_ORIGIN=true` (Firefox; see "Start the local server")
-
-To open the admin control panel locally or in production, see [Admin Panel and API](./docs/reference/admin-api.md).
-
-## Docker Deployment
-
-The server is also published as a container image on every `v*` release tag:
-
-- `ghcr.io/sky1wu/bili-syncplay-server` ([GHCR package page](https://github.com/sky1wu/Bili-SyncPlay/pkgs/container/bili-syncplay-server))
-- `docker.io/sky1wu/bili-syncplay-server` ([Docker Hub page](https://hub.docker.com/r/sky1wu/bili-syncplay-server), mirror)
-
-These are `docker pull` references, not web URLs — to browse in a browser, use the linked pages.
-
-Image tags: `latest`, `<major>.<minor>`, and the full version (e.g. `1.2.2`). Both `linux/amd64` and `linux/arm64` are supported.
-
-Run directly:
+## Tests
 
 ```bash
-docker run -d --name bili-syncplay-server \
-  -p 8787:8787 \
-  -e ALLOWED_ORIGINS=chrome-extension://lbmckljnginagfabglpfdepofoglfdkj \
-  ghcr.io/sky1wu/bili-syncplay-server:latest
+cd server
+npm test
 ```
 
-Or use the repository's [`docker-compose.yml`](./docker-compose.yml), which includes an optional Redis service for multi-node / restart-persistent deployments.
+```bash
+node extension-test/content-sync.test.mjs
+```
 
-Notes:
+(Without Node, replace `npm test` / `node` with `bun test/smoke.mjs` / `bun`.)
 
-- The container listens on `8787` (override with `PORT`), exposes `/healthz` and `/readyz`, and ships a built-in Docker `HEALTHCHECK`.
-- Configuration is entirely environment-variable based, identical to a bare-metal deployment: `ALLOWED_ORIGINS` (required for extensions to connect), Redis persistence (`ROOM_STORE_PROVIDER=redis` plus `REDIS_URL`; `REDIS_URL` alone keeps the in-memory store), admin panel variables (`ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` / `ADMIN_SESSION_SECRET`), and so on — see the [security environment variable reference](./docs/reference/security-env.md) and the [multi-node runbook](./docs/runbook/multi-node-operations.md).
-- The container runs `node` directly as PID 1 and handles `SIGTERM`, so `docker stop` triggers a graceful shutdown (under a second normally, ~135s worst case on a busy node). Docker's default grace period is only 10s and would SIGKILL mid-cleanup — use `docker stop -t 160`; `docker-compose.yml` already sets `stop_grace_period: 160s`. See [Graceful shutdown](./docs/operations/deployment.md#graceful-shutdown) for details.
-- In production, terminate TLS at a reverse proxy so the extension connects over `wss://` (see the version matrix).
-- Build locally from the repository root: `docker build -t bili-syncplay-server .` (the image contains only the server; the extension is distributed separately).
+## Differences from Bili-SyncPlay
 
-For maintainers: the `Docker Release` workflow pushes to GHCR automatically using the built-in `GITHUB_TOKEN`. To also publish to Docker Hub, configure the `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repository secrets; when they are absent the Docker Hub push is skipped without failing the release.
+This is a slimmed-down implementation that keeps the core room and sync experience. It does not include the original project's admin console, Redis multi-node support, announcements, Firefox build, or diagnostics panel. The protocol is simplified as well (a connection is bound to a member identity; `memberToken` is used only for reconnecting).
+
+## Known Limitations
+
+- The sync logic is covered by tests against a simulated player; it has not yet been verified end to end on real YouTube pages
+- Members-only, age-restricted or region-restricted videos cannot be synced for members who are not allowed to watch them
+- Everyone sees different ads; a member watching an ad jumps to the room's current position when the ad ends
+- The browser may block autoplay in background tabs, in which case the page asks for a click
+- Seeks smaller than about 1.5 seconds are not broadcast (this is how user actions are told apart from sync echoes)
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0. See [LICENSE](./LICENSE).
+[GPL-3.0](./LICENSE)
+
+## Notice
+
+This project is not affiliated with YouTube or Google.

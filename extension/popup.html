@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>YouTube SyncPlay</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <img src="icons/icon48.png" alt="" width="22" height="22" />
+        <span>YouTube SyncPlay</span>
+      </div>
+      <div class="status" id="status"><i></i><span id="status-text"></span></div>
+    </header>
+
+    <div class="banner" id="error" role="alert" hidden></div>
+
+    <!-- Not in a room -->
+    <main id="view-lobby" hidden>
+      <label class="field">
+        <span data-i18n="labelName"></span>
+        <input id="name" type="text" maxlength="32" data-i18n-placeholder="placeholderName" />
+      </label>
+      <button class="primary" id="create" data-i18n="btnCreate"></button>
+      <div class="divider"><span data-i18n="dividerOr"></span></div>
+      <input id="invite" type="text" spellcheck="false" autocomplete="off"
+        data-i18n-placeholder="placeholderInvite" />
+      <button id="join" data-i18n="btnJoin"></button>
+    </main>
+
+    <!-- In a room -->
+    <main id="view-room" hidden>
+      <section class="card">
+        <div class="row">
+          <span class="label" data-i18n="labelRoom"></span>
+          <span class="code" id="room-code"></span>
+        </div>
+        <div class="row">
+          <span class="label" data-i18n="labelInvite"></span>
+          <code id="invite-text"></code>
+          <button class="small" id="copy" data-i18n="btnCopy"></button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="label" data-i18n="labelShared"></div>
+        <div id="shared-empty" class="muted" data-i18n="noShared"></div>
+        <div id="shared" hidden>
+          <div class="row">
+            <div class="grow">
+              <div id="shared-title" class="title"></div>
+              <div id="shared-by" class="muted"></div>
+            </div>
+            <button class="small" id="open-shared" data-i18n="btnOpenShared"></button>
+          </div>
+        </div>
+      </section>
+
+      <button class="primary" id="share" data-i18n="btnShare"></button>
+      <div class="hint muted" id="share-hint"></div>
+
+      <section class="card">
+        <div class="label" id="members-label"></div>
+        <ul id="members"></ul>
+      </section>
+
+      <button class="danger" id="leave" data-i18n="btnLeave"></button>
+    </main>
+
+    <details id="settings">
+      <summary data-i18n="settings"></summary>
+      <label class="check">
+        <input type="checkbox" id="auto-next" />
+        <span data-i18n="optAutoNext"></span>
+      </label>
+      <label class="field">
+        <span data-i18n="labelServer"></span>
+        <div class="row">
+          <input id="server" type="text" spellcheck="false" placeholder="ws://localhost:8787" />
+          <button class="small" id="save-server" data-i18n="btnSave"></button>
+        </div>
+      </label>
+      <div class="muted" data-i18n="serverHint"></div>
+    </details>
+
+    <script src="shared.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
