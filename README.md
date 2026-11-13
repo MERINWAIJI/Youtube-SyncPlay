@@ -50,6 +50,8 @@ It listens on `ws://localhost:8787` by default.
 
 To use it with friends in other locations, deploy the server at an address everyone can reach, then set the server address in the popup's Settings to `wss://your-domain` (every member has to change it).
 
+On Windows you can double-click `start-server.bat` in the repository root: it starts the server, opens a temporary cloudflared tunnel and prints the `wss://` address to enter in the extension (requires Node.js or Bun, and cloudflared). The temporary tunnel address changes on every start.
+
 ## Features
 
 - Rooms: create a room, join by invite, copy the invite, member list
